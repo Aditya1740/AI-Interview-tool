@@ -165,8 +165,9 @@ router.post('/answer/:applicationId', authenticate, requireRole('candidate'), as
 
     const question = questions[questionIndex];
 
-    // Evaluate the answer with Claude
-    const evaluation = await evaluateAnswer(application.job_title, question.question, answer);
+    // Evaluate the answer with the LLM, passing the full question object
+    // so its ideal_points / category are used as the grading rubric.
+    const evaluation = await evaluateAnswer(application.job_title, question, answer);
 
     // Store answer and score
     answers[questionIndex] = answer;

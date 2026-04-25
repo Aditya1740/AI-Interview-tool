@@ -18,13 +18,14 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting
+// Rate limiting — generous in dev so HMR/page reloads don't trip it.
+const isProd = process.env.NODE_ENV === 'production';
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  windowMs: isProd ? 15 * 60 * 1000 : 60 * 1000,  // 15 min in prod, 1 min in dev
+  max:      isProd ? 100             : 1000,      // 1000 req/min in dev
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later.' }
+  message: { error: 'Too many requests, please try again later.' },
 });
 app.use(limiter);
 

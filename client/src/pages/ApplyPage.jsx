@@ -155,7 +155,7 @@ export default function ApplyPage() {
               <button
                 type="submit"
                 disabled={loading || !file}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white py-3 rounded-lg font-semibold transition-colors"
+                className="btn-success w-full !py-3"
               >
                 {loading ? 'Analyzing...' : 'Submit Application'}
               </button>
@@ -214,7 +214,7 @@ export default function ApplyPage() {
 
             <button
               onClick={() => navigate(`/interview/${result.id}`)}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold text-lg transition-colors"
+              className="btn-primary w-full !py-4 text-lg"
             >
               Start Interview →
             </button>

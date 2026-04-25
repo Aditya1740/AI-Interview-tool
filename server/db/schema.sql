@@ -14,7 +14,21 @@ CREATE TABLE IF NOT EXISTS jobs (
   requirements TEXT NOT NULL,
   created_by INTEGER REFERENCES users(id),
   is_active BOOLEAN DEFAULT 1,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  -- Indeed-style metadata (also added via migrations.js for older DBs)
+  company_name TEXT,
+  company_description TEXT,
+  company_logo_url TEXT,
+  location TEXT,
+  job_type TEXT,
+  salary_min INTEGER,
+  salary_max INTEGER,
+  salary_currency TEXT DEFAULT 'INR',
+  experience_min INTEGER,
+  experience_max INTEGER,
+  num_openings INTEGER DEFAULT 1,
+  application_deadline DATE,
+  tags TEXT
 );
 
 CREATE TABLE IF NOT EXISTS applications (

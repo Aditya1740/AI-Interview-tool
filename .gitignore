@@ -4,3 +4,14 @@ node_modules/
 dist/
 build/
 *.log
+
+# User-uploaded resumes (runtime artifacts, not source)
+server/uploads/
+
+# Local SQLite database & lock files
+server/db/*.db
+server/db/*.db-journal
+server/db/*.db.lock
+
+# Claude Code session metadata (permissions, scheduled tasks)
+.claude/

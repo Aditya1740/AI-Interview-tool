@@ -4,20 +4,73 @@ const { authenticate, requireRole } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
-// GET /api/jobs - list all active jobs (public)
+const EDITABLE_FIELDS = [
+  'title', 'description', 'requirements',
+  'company_name', 'company_description', 'company_logo_url',
+  'location', 'job_type',
+  'salary_min', 'salary_max', 'salary_currency',
+  'experience_min', 'experience_max',
+  'num_openings', 'application_deadline',
+  'tags', 'is_active',
+];
+
+// GET /api/jobs - list/search jobs (public)
+// Query params: q, location, jobType, minSalary, minExperience, sortBy
 router.get('/', (req, res) => {
   try {
-    const jobs = db
-      .prepare(
-        `SELECT j.*, u.name as creator_name,
-          (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id) as application_count
-         FROM jobs j
-         LEFT JOIN users u ON j.created_by = u.id
-         WHERE j.is_active = 1
-         ORDER BY j.created_at DESC`
-      )
-      .all();
+    const {
+      q,
+      location,
+      jobType,
+      minSalary,
+      minExperience,
+      sortBy = 'recent',
+    } = req.query;
 
+    const where = ['j.is_active = 1'];
+    const params = [];
+
+    if (q) {
+      where.push(
+        '(LOWER(j.title) LIKE ? OR LOWER(j.description) LIKE ? OR LOWER(j.requirements) LIKE ? OR LOWER(IFNULL(j.company_name, \'\')) LIKE ?)'
+      );
+      const needle = `%${String(q).toLowerCase()}%`;
+      params.push(needle, needle, needle, needle);
+    }
+    if (location) {
+      where.push('LOWER(IFNULL(j.location, \'\')) LIKE ?');
+      params.push(`%${String(location).toLowerCase()}%`);
+    }
+    if (jobType) {
+      where.push('LOWER(IFNULL(j.job_type, \'\')) = ?');
+      params.push(String(jobType).toLowerCase());
+    }
+    if (minSalary) {
+      // Job qualifies if its salary_max meets/exceeds the candidate's floor.
+      where.push('IFNULL(j.salary_max, j.salary_min) >= ?');
+      params.push(parseInt(minSalary, 10) || 0);
+    }
+    if (minExperience !== undefined && minExperience !== '') {
+      // Candidate has X years; show jobs requiring at most X (or unspecified).
+      where.push('(j.experience_min IS NULL OR j.experience_min <= ?)');
+      params.push(parseInt(minExperience, 10) || 0);
+    }
+
+    let orderBy = 'j.created_at DESC';
+    if (sortBy === 'salary_high') orderBy = 'IFNULL(j.salary_max, j.salary_min) DESC NULLS LAST, j.created_at DESC';
+    else if (sortBy === 'salary_low') orderBy = 'IFNULL(j.salary_min, j.salary_max) ASC NULLS LAST, j.created_at DESC';
+    else if (sortBy === 'deadline') orderBy = 'j.application_deadline ASC NULLS LAST, j.created_at DESC';
+
+    const sql = `
+      SELECT j.*, u.name as creator_name,
+        (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id) as application_count
+      FROM jobs j
+      LEFT JOIN users u ON j.created_by = u.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY ${orderBy}
+    `;
+
+    const jobs = db.prepare(sql).all(params);
     res.json(jobs);
   } catch (err) {
     console.error('Get jobs error:', err);
@@ -38,10 +91,7 @@ router.get('/:id', (req, res) => {
       )
       .get(req.params.id);
 
-    if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-
+    if (!job) return res.status(404).json({ error: 'Job not found' });
     res.json(job);
   } catch (err) {
     console.error('Get job error:', err);
@@ -49,18 +99,34 @@ router.get('/:id', (req, res) => {
   }
 });
 
+// Build the column-list and value-list for INSERT/UPDATE from a body, in a
+// safe whitelist-driven way.
+function buildJobPayload(body) {
+  const cols = [];
+  const vals = [];
+  for (const key of EDITABLE_FIELDS) {
+    if (body[key] === undefined) continue;
+    cols.push(key);
+    vals.push(body[key] === '' ? null : body[key]);
+  }
+  return { cols, vals };
+}
+
 // POST /api/jobs - create job (HR/admin only)
 router.post('/', authenticate, requireRole('hr', 'admin'), (req, res) => {
   try {
     const { title, description, requirements } = req.body;
-
     if (!title || !description || !requirements) {
       return res.status(400).json({ error: 'Title, description, and requirements are required' });
     }
 
+    const { cols, vals } = buildJobPayload(req.body);
+    cols.push('created_by'); vals.push(req.user.id);
+
+    const placeholders = cols.map(() => '?').join(',');
     const result = db
-      .prepare('INSERT INTO jobs (title, description, requirements, created_by) VALUES (?, ?, ?, ?)')
-      .run([title, description, requirements, req.user.id]);
+      .prepare(`INSERT INTO jobs (${cols.join(',')}) VALUES (${placeholders})`)
+      .run(vals);
 
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(job);
@@ -74,21 +140,14 @@ router.post('/', authenticate, requireRole('hr', 'admin'), (req, res) => {
 router.put('/:id', authenticate, requireRole('hr', 'admin'), (req, res) => {
   try {
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
-    if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const { cols, vals } = buildJobPayload(req.body);
+    if (cols.length === 0) {
+      return res.status(400).json({ error: 'No editable fields provided' });
     }
-
-    const { title, description, requirements, is_active } = req.body;
-
-    db.prepare(
-      'UPDATE jobs SET title = ?, description = ?, requirements = ?, is_active = ? WHERE id = ?'
-    ).run([
-      title ?? job.title,
-      description ?? job.description,
-      requirements ?? job.requirements,
-      is_active !== undefined ? is_active : job.is_active,
-      req.params.id
-    ]);
+    const setSql = cols.map((c) => `${c} = ?`).join(', ');
+    db.prepare(`UPDATE jobs SET ${setSql} WHERE id = ?`).run([...vals, req.params.id]);
 
     const updated = db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
     res.json(updated);
@@ -102,10 +161,7 @@ router.put('/:id', authenticate, requireRole('hr', 'admin'), (req, res) => {
 router.delete('/:id', authenticate, requireRole('hr', 'admin'), (req, res) => {
   try {
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
-    if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-
+    if (!job) return res.status(404).json({ error: 'Job not found' });
     db.prepare('UPDATE jobs SET is_active = 0 WHERE id = ?').run(req.params.id);
     res.json({ message: 'Job deactivated successfully' });
   } catch (err) {

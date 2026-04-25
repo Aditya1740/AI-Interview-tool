@@ -70,9 +70,17 @@ router.post(
       }
 
       // Extract text from PDF
-      const resumeText = await extractTextFromPDF(req.file.path);
-      if (!resumeText || resumeText.trim().length < 50) {
-        return res.status(400).json({ error: 'Could not extract sufficient text from the PDF. Please ensure the PDF contains readable text.' });
+      const { text: resumeText, length, isImageBased } = await extractTextFromPDF(req.file.path);
+
+      if (isImageBased) {
+        return res.status(400).json({
+          error: 'This PDF appears to be image-based (no extractable text layer). Please upload a text-searchable PDF — try exporting directly from Word/Google Docs or your resume builder rather than scanning or going through a converter like iLovePDF.',
+        });
+      }
+      if (length < 50) {
+        return res.status(400).json({
+          error: `Only ${length} characters of text could be extracted. The PDF may be encrypted, mostly images, or use a non-standard font. Please re-export and try again.`,
+        });
       }
 
       // Call matching service
@@ -115,22 +123,44 @@ router.get('/my', authenticate, requireRole('candidate'), (req, res) => {
   try {
     const applications = db
       .prepare(
-        `SELECT a.*, j.title as job_title, j.description as job_description,
+        `SELECT a.*,
+          j.title as job_title, j.description as job_description,
+          j.company_name, j.company_logo_url, j.location, j.job_type,
+          j.salary_min, j.salary_max, j.salary_currency,
           i.status as interview_status, i.avg_interview_score,
-          e.overall_score, e.recommendation
+          e.overall_score, e.recommendation, e.report as report_json
          FROM applications a
          JOIN jobs j ON a.job_id = j.id
-         LEFT JOIN interviews i ON i.application_id = a.id
-         LEFT JOIN evaluations e ON e.application_id = a.id
+         LEFT JOIN (
+           SELECT application_id, status, avg_interview_score
+           FROM interviews GROUP BY application_id
+         ) i ON i.application_id = a.id
+         LEFT JOIN (
+           SELECT application_id, overall_score, recommendation, report
+           FROM evaluations GROUP BY application_id
+         ) e ON e.application_id = a.id
          WHERE a.user_id = ?
+         GROUP BY a.id
          ORDER BY a.created_at DESC`
       )
       .all(req.user.id);
 
-    const parsed = applications.map((app) => ({
-      ...app,
-      match_details: app.match_details ? JSON.parse(app.match_details) : null
-    }));
+    const parsed = applications.map((app) => {
+      const report = app.report_json ? JSON.parse(app.report_json) : null;
+      const out = {
+        ...app,
+        match_details: app.match_details ? JSON.parse(app.match_details) : null,
+        // Promote sub-scores so the UI can show the full rubric
+        resume_score:      report?.resume_score      ?? null,
+        technical_score:   report?.technical_score   ?? null,
+        hr_score:          report?.hr_score          ?? null,
+        soft_signal_score: report?.soft_signal_score ?? null,
+        total_score:       report?.total_score       ?? app.overall_score ?? null,
+        hiring_verdict:    report?.hiring_verdict    ?? null,
+      };
+      delete out.report_json;
+      return out;
+    });
 
     res.json(parsed);
   } catch (err) {
@@ -139,29 +169,82 @@ router.get('/my', authenticate, requireRole('candidate'), (req, res) => {
   }
 });
 
-// GET /api/applications/job/:jobId - get all applications for a job (HR/admin only)
+// GET /api/applications/job/:jobId - HR analytics view for a job
+// Query params: minScore (>=), q (candidate name), sortBy (total|technical|hr|match|name|date)
 router.get('/job/:jobId', authenticate, requireRole('hr', 'admin'), (req, res) => {
   try {
+    const { minScore, q, sortBy = 'total' } = req.query;
+    // Subqueries on interviews/evaluations protect against duplicate rows
+    // if multiple interview/evaluation records ever exist for one application.
     const applications = db
       .prepare(
         `SELECT a.*, u.name as candidate_name, u.email as candidate_email,
           j.title as job_title,
           i.status as interview_status, i.avg_interview_score,
-          e.overall_score, e.recommendation, e.interview_component, e.match_component
+          e.overall_score, e.recommendation, e.interview_component, e.match_component,
+          e.report as report_json
          FROM applications a
          JOIN users u ON a.user_id = u.id
          JOIN jobs j ON a.job_id = j.id
-         LEFT JOIN interviews i ON i.application_id = a.id
-         LEFT JOIN evaluations e ON e.application_id = a.id
+         LEFT JOIN (
+           SELECT application_id, status, avg_interview_score
+           FROM interviews
+           GROUP BY application_id
+         ) i ON i.application_id = a.id
+         LEFT JOIN (
+           SELECT application_id, overall_score, recommendation, interview_component, match_component, report
+           FROM evaluations
+           GROUP BY application_id
+         ) e ON e.application_id = a.id
          WHERE a.job_id = ?
-         ORDER BY e.overall_score DESC NULLS LAST, a.created_at DESC`
+         GROUP BY a.id`
       )
       .all(req.params.jobId);
 
-    const parsed = applications.map((app) => ({
-      ...app,
-      match_details: app.match_details ? JSON.parse(app.match_details) : null
-    }));
+    let parsed = applications.map((app) => {
+      const report = app.report_json ? JSON.parse(app.report_json) : null;
+      const out = {
+        ...app,
+        match_details: app.match_details ? JSON.parse(app.match_details) : null,
+        // Promote section scores from the evaluation report for easy table rendering
+        technical_score: report?.technical_score ?? null,
+        hr_score: report?.hr_score ?? null,
+        soft_signal_score: report?.soft_signal_score ?? null,
+        resume_score: report?.resume_score ?? null,
+        total_score: report?.total_score ?? app.overall_score ?? null,
+        hiring_verdict: report?.hiring_verdict ?? null,
+      };
+      delete out.report_json;
+      return out;
+    });
+
+    // Filtering
+    const minScoreNum = parseFloat(minScore);
+    if (!Number.isNaN(minScoreNum)) {
+      parsed = parsed.filter((a) => (a.total_score ?? a.overall_score ?? 0) >= minScoreNum);
+    }
+    if (q) {
+      const needle = String(q).toLowerCase();
+      parsed = parsed.filter((a) =>
+        (a.candidate_name || '').toLowerCase().includes(needle) ||
+        (a.candidate_email || '').toLowerCase().includes(needle)
+      );
+    }
+
+    // Sorting (nulls go last)
+    const numCmp = (key) => (a, b) => {
+      const av = a[key], bv = b[key];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return bv - av;
+    };
+    if (sortBy === 'total')           parsed.sort(numCmp('total_score'));
+    else if (sortBy === 'technical')  parsed.sort(numCmp('technical_score'));
+    else if (sortBy === 'hr')         parsed.sort(numCmp('hr_score'));
+    else if (sortBy === 'match')      parsed.sort(numCmp('match_score'));
+    else if (sortBy === 'name')       parsed.sort((a, b) => (a.candidate_name || '').localeCompare(b.candidate_name || ''));
+    else if (sortBy === 'date')       parsed.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     res.json(parsed);
   } catch (err) {

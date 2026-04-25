@@ -6,5 +6,7 @@ export const applyToJob = (formData) =>
   });
 
 export const getMyApplications = () => api.get('/api/applications/my');
-export const getJobApplications = (jobId) => api.get(`/api/applications/job/${jobId}`);
+// `params` optional: { minScore, q, sortBy }
+export const getJobApplications = (jobId, params = {}) =>
+  api.get(`/api/applications/job/${jobId}`, { params });
 export const getApplication = (id) => api.get(`/api/applications/${id}`);

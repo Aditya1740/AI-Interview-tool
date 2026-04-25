@@ -87,11 +87,7 @@ export default function ResultPage() {
 
         {/* Score Breakdown */}
         <div className="mb-6">
-          <ScoreBreakdownBar
-            matchComponent={evaluation?.match_component}
-            interviewComponent={evaluation?.interview_component}
-            overallScore={evaluation?.overall_score}
-          />
+          <ScoreBreakdownBar report={report} />
         </div>
 
         {/* Report Card */}

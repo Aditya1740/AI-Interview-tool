@@ -1,16 +1,23 @@
 import React from 'react';
 
 const recommendationConfig = {
-  'Strongly Recommend': { color: 'bg-green-100 text-green-800 border-green-200', dot: 'bg-green-500' },
-  'Recommend': { color: 'bg-blue-100 text-blue-800 border-blue-200', dot: 'bg-blue-500' },
-  'Maybe': { color: 'bg-yellow-100 text-yellow-800 border-yellow-200', dot: 'bg-yellow-500' },
-  'Not Recommend': { color: 'bg-red-100 text-red-800 border-red-200', dot: 'bg-red-500' }
+  // New rubric (15+50+25+10=100)
+  'Strong Hire': { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-500' },
+  'Hire':        { color: 'bg-green-100 text-green-800 border-green-200',       dot: 'bg-green-500' },
+  'Consider':    { color: 'bg-amber-100 text-amber-800 border-amber-200',       dot: 'bg-amber-500' },
+  'Reject':      { color: 'bg-rose-100 text-rose-800 border-rose-200',          dot: 'bg-rose-500' },
+  // Legacy (older saved evaluations)
+  'Borderline':         { color: 'bg-amber-100 text-amber-800 border-amber-200',       dot: 'bg-amber-500' },
+  'Strongly Recommend': { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-500' },
+  'Recommend':          { color: 'bg-green-100 text-green-800 border-green-200',       dot: 'bg-green-500' },
+  'Maybe':              { color: 'bg-amber-100 text-amber-800 border-amber-200',       dot: 'bg-amber-500' },
+  'Not Recommend':      { color: 'bg-rose-100 text-rose-800 border-rose-200',          dot: 'bg-rose-500' }
 };
 
 export default function ReportCard({ report }) {
   if (!report) return null;
 
-  const recConfig = recommendationConfig[report.recommendation] || recommendationConfig['Maybe'];
+  const recConfig = recommendationConfig[report.recommendation] || recommendationConfig['Consider'];
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">

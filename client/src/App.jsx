@@ -7,6 +7,7 @@ import JobListings from './pages/JobListings';
 import ApplyPage from './pages/ApplyPage';
 import InterviewPage from './pages/InterviewPage';
 import ResultPage from './pages/ResultPage';
+import MyApplications from './pages/MyApplications';
 import HRLogin from './pages/HRLogin';
 import HRDashboard from './pages/HRDashboard';
 import JobManagement from './pages/JobManagement';
@@ -46,6 +47,14 @@ function AppRoutes() {
       <Route path="/apply/:jobId" element={<ApplyPage />} />
       <Route path="/interview/:applicationId" element={<InterviewPage />} />
       <Route path="/result/:applicationId" element={<ResultPage />} />
+      <Route
+        path="/my-applications"
+        element={
+          <ProtectedRoute allowedRoles={['candidate']}>
+            <MyApplications />
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         path="/hr"

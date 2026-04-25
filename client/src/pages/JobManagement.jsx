@@ -4,7 +4,24 @@ import { useAuth } from '../context/AuthContext';
 import { getJobs, createJob, updateJob, deleteJob } from '../api/jobs.api';
 import Navbar from '../components/Navbar';
 
-const emptyForm = { title: '', description: '', requirements: '' };
+const JOB_TYPES = ['Full-time', 'Part-time', 'Internship', 'Contract', 'Remote'];
+
+const emptyForm = {
+  title: '', description: '', requirements: '',
+  company_name: '', company_description: '', company_logo_url: '',
+  location: '', job_type: 'Full-time',
+  salary_min: '', salary_max: '', salary_currency: 'INR',
+  experience_min: '', experience_max: '',
+  num_openings: 1, application_deadline: '',
+  tags: '',
+};
+
+function fmtSalary(min, max, ccy = 'INR') {
+  if (!min && !max) return null;
+  const lakh = (n) => (n >= 100000 ? `${(n / 100000).toFixed(1)}L` : n.toLocaleString());
+  if (min && max) return `${ccy} ${lakh(min)} – ${lakh(max)}`;
+  return `${ccy} ${lakh(min || max)}+`;
+}
 
 export default function JobManagement() {
   const [jobs, setJobs] = useState([]);
@@ -36,30 +53,44 @@ export default function JobManagement() {
     }
   };
 
-  const handleOpenCreate = () => {
-    setEditJob(null);
-    setForm(emptyForm);
-    setShowForm(true);
-    setError('');
-  };
+  const openCreate = () => { setEditJob(null); setForm(emptyForm); setShowForm(true); setError(''); };
 
-  const handleOpenEdit = (job) => {
+  const openEdit = (job) => {
     setEditJob(job);
-    setForm({ title: job.title, description: job.description, requirements: job.requirements });
-    setShowForm(true);
-    setError('');
+    setForm({
+      title: job.title || '',
+      description: job.description || '',
+      requirements: job.requirements || '',
+      company_name: job.company_name || '',
+      company_description: job.company_description || '',
+      company_logo_url: job.company_logo_url || '',
+      location: job.location || '',
+      job_type: job.job_type || 'Full-time',
+      salary_min: job.salary_min ?? '',
+      salary_max: job.salary_max ?? '',
+      salary_currency: job.salary_currency || 'INR',
+      experience_min: job.experience_min ?? '',
+      experience_max: job.experience_max ?? '',
+      num_openings: job.num_openings ?? 1,
+      application_deadline: job.application_deadline || '',
+      tags: job.tags || '',
+    });
+    setShowForm(true); setError('');
   };
 
-  const handleSubmitForm = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSubmitting(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setError(''); setSubmitting(true);
     try {
-      if (editJob) {
-        await updateJob(editJob.id, form);
-      } else {
-        await createJob(form);
-      }
+      const payload = {
+        ...form,
+        salary_min: form.salary_min === '' ? null : Number(form.salary_min),
+        salary_max: form.salary_max === '' ? null : Number(form.salary_max),
+        experience_min: form.experience_min === '' ? null : Number(form.experience_min),
+        experience_max: form.experience_max === '' ? null : Number(form.experience_max),
+        num_openings: Number(form.num_openings) || 1,
+      };
+      if (editJob) await updateJob(editJob.id, payload);
+      else await createJob(payload);
       setShowForm(false);
       fetchJobs();
     } catch (err) {
@@ -71,13 +102,10 @@ export default function JobManagement() {
 
   const handleDelete = async (jobId) => {
     if (!confirm('Deactivate this job posting? It will no longer appear to candidates.')) return;
-    try {
-      await deleteJob(jobId);
-      fetchJobs();
-    } catch {
-      setError('Failed to deactivate job');
-    }
+    try { await deleteJob(jobId); fetchJobs(); } catch { setError('Failed to deactivate job'); }
   };
+
+  const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -86,104 +114,46 @@ export default function JobManagement() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-slate-800">Job Management</h1>
-            <p className="text-slate-500 mt-1">Create and manage job postings</p>
+            <p className="text-slate-500 mt-1">Post jobs · review applicants · analyze AI scores</p>
           </div>
-          <button
-            onClick={handleOpenCreate}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-colors"
-          >
-            + Create New Job
-          </button>
+          <button onClick={openCreate} className="btn-success">+ Post a New Job</button>
         </div>
 
         {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm">{error}</div>
+          <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-4 text-sm">{error}</div>
         )}
 
-        {/* Modal Form */}
         {showForm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
-            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-800">
-                  {editJob ? 'Edit Job' : 'Create New Job'}
-                </h2>
-                <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
-              </div>
-              <form onSubmit={handleSubmitForm} className="p-6 space-y-4">
-                {error && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">{error}</div>
-                )}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Job Title</label>
-                  <input
-                    type="text"
-                    value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })}
-                    placeholder="e.g. Senior Software Engineer"
-                    required
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Job Description</label>
-                  <textarea
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    placeholder="Describe the role, responsibilities, and team..."
-                    rows={5}
-                    required
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Requirements</label>
-                  <textarea
-                    value={form.requirements}
-                    onChange={(e) => setForm({ ...form, requirements: e.target.value })}
-                    placeholder="List required skills, technologies, and experience (comma-separated works well)"
-                    rows={3}
-                    required
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                  />
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowForm(false)}
-                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-lg font-medium text-sm"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white py-2.5 rounded-lg font-medium text-sm"
-                  >
-                    {submitting ? 'Saving...' : editJob ? 'Save Changes' : 'Create Job'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+          <JobFormModal
+            form={form}
+            update={update}
+            onClose={() => setShowForm(false)}
+            onSubmit={handleSubmit}
+            submitting={submitting}
+            editing={!!editJob}
+            error={error}
+          />
         )}
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
         ) : jobs.length === 0 ? (
-          <div className="text-center py-20">
+          <div className="card p-16 text-center">
             <div className="text-5xl mb-4">💼</div>
             <p className="text-slate-500 text-lg">No job postings yet.</p>
-            <button onClick={handleOpenCreate} className="mt-4 text-indigo-600 underline">Create your first job</button>
+            <button onClick={openCreate} className="btn-success mt-5">Post your first job</button>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="card overflow-hidden">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Company</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Location · Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Salary</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Applicants</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
@@ -193,40 +163,29 @@ export default function JobManagement() {
                 {jobs.map((job) => (
                   <tr key={job.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-800">{job.title}</p>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate max-w-sm">{job.description.substring(0, 80)}...</p>
+                      <p className="font-semibold text-slate-800">{job.title}</p>
+                      <p className="text-xs text-slate-500 mt-0.5 truncate max-w-xs">{(job.description || '').slice(0, 80)}{(job.description || '').length > 80 ? '…' : ''}</p>
                     </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">{job.company_name || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      <div>{job.location || '—'}</div>
+                      <div className="text-xs text-slate-500">{job.job_type || '—'}</div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">{fmtSalary(job.salary_min, job.salary_max, job.salary_currency) || '—'}</td>
                     <td className="px-4 py-3">
-                      <Link
-                        to={`/hr/jobs/${job.id}/candidates`}
-                        className="text-indigo-600 hover:underline font-medium"
-                      >
-                        {job.application_count || 0} candidates
+                      <Link to={`/hr/jobs/${job.id}/candidates`} className="text-brand-600 hover:underline font-medium">
+                        {job.application_count || 0}
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        job.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                      }`}>
+                      <span className={job.is_active ? 'badge-success' : 'badge-neutral'}>
                         {job.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleOpenEdit(job)}
-                          className="text-sm text-indigo-600 hover:underline font-medium"
-                        >
-                          Edit
-                        </button>
-                        <span className="text-slate-300">|</span>
-                        <button
-                          onClick={() => handleDelete(job.id)}
-                          className="text-sm text-red-500 hover:underline font-medium"
-                        >
-                          Deactivate
-                        </button>
-                      </div>
+                    <td className="px-4 py-3 text-sm">
+                      <button onClick={() => openEdit(job)} className="text-brand-600 hover:underline font-medium">Edit</button>
+                      <span className="text-slate-300 mx-2">·</span>
+                      <button onClick={() => handleDelete(job.id)} className="text-rose-600 hover:underline font-medium">Deactivate</button>
                     </td>
                   </tr>
                 ))}
@@ -235,6 +194,178 @@ export default function JobManagement() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Modal: sectioned form + live preview
+// -----------------------------------------------------------------------------
+function JobFormModal({ form, update, onClose, onSubmit, submitting, editing, error }) {
+  return (
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto shadow-2xl">
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">{editing ? 'Edit Job' : 'Post a New Job'}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Fill in the details — candidates will see this exactly.</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
+        </div>
+
+        <div className="grid lg:grid-cols-5 gap-0">
+          {/* FORM */}
+          <form onSubmit={onSubmit} className="lg:col-span-3 p-6 space-y-6">
+            {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-sm">{error}</div>}
+
+            <Section title="Basics">
+              <Field label="Job Title *">
+                <input className="input-field" required value={form.title} onChange={(e) => update('title', e.target.value)} placeholder="e.g. Senior Backend Engineer" />
+              </Field>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="Company Name">
+                  <input className="input-field" value={form.company_name} onChange={(e) => update('company_name', e.target.value)} placeholder="Acme Corp" />
+                </Field>
+                <Field label="Company Logo URL (optional)">
+                  <input className="input-field" value={form.company_logo_url} onChange={(e) => update('company_logo_url', e.target.value)} placeholder="https://…/logo.png" />
+                </Field>
+              </div>
+              <Field label="Company Description">
+                <textarea className="input-field resize-none" rows={2} value={form.company_description} onChange={(e) => update('company_description', e.target.value)} placeholder="One-line about your company" />
+              </Field>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="Location">
+                  <input className="input-field" value={form.location} onChange={(e) => update('location', e.target.value)} placeholder="Bangalore, India" />
+                </Field>
+                <Field label="Job Type">
+                  <select className="input-field" value={form.job_type} onChange={(e) => update('job_type', e.target.value)}>
+                    {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </Field>
+              </div>
+            </Section>
+
+            <Section title="Compensation & Experience">
+              <div className="grid sm:grid-cols-3 gap-3">
+                <Field label="Salary Min">
+                  <input type="number" min="0" className="input-field" value={form.salary_min} onChange={(e) => update('salary_min', e.target.value)} placeholder="1500000" />
+                </Field>
+                <Field label="Salary Max">
+                  <input type="number" min="0" className="input-field" value={form.salary_max} onChange={(e) => update('salary_max', e.target.value)} placeholder="2500000" />
+                </Field>
+                <Field label="Currency">
+                  <select className="input-field" value={form.salary_currency} onChange={(e) => update('salary_currency', e.target.value)}>
+                    <option>INR</option><option>USD</option><option>EUR</option><option>GBP</option><option>SGD</option>
+                  </select>
+                </Field>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="Experience Min (years)">
+                  <input type="number" min="0" className="input-field" value={form.experience_min} onChange={(e) => update('experience_min', e.target.value)} placeholder="2" />
+                </Field>
+                <Field label="Experience Max (years)">
+                  <input type="number" min="0" className="input-field" value={form.experience_max} onChange={(e) => update('experience_max', e.target.value)} placeholder="6" />
+                </Field>
+              </div>
+            </Section>
+
+            <Section title="Description & Skills">
+              <Field label="Detailed Job Description * (used by AI to generate interview questions)">
+                <textarea className="input-field resize-none" rows={6} required value={form.description} onChange={(e) => update('description', e.target.value)} placeholder="Describe the role, team, stack, and what success looks like…" />
+              </Field>
+              <Field label="Required Skills * (comma-separated)">
+                <textarea className="input-field resize-none" rows={2} required value={form.requirements} onChange={(e) => update('requirements', e.target.value)} placeholder="React, TypeScript, REST APIs, 2+ years experience" />
+              </Field>
+            </Section>
+
+            <Section title="Schedule & Tags">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="Number of Openings">
+                  <input type="number" min="1" className="input-field" value={form.num_openings} onChange={(e) => update('num_openings', e.target.value)} />
+                </Field>
+                <Field label="Application Deadline">
+                  <input type="date" className="input-field" value={form.application_deadline} onChange={(e) => update('application_deadline', e.target.value)} />
+                </Field>
+              </div>
+              <Field label="Tags (comma-separated, optional)">
+                <input className="input-field" value={form.tags} onChange={(e) => update('tags', e.target.value)} placeholder="Urgent, Remote, Hot" />
+              </Field>
+            </Section>
+
+            <div className="flex gap-3 pt-2 border-t border-slate-100">
+              <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancel</button>
+              <button type="submit" disabled={submitting} className="btn-success flex-1">
+                {submitting ? 'Saving...' : editing ? 'Save Changes' : 'Post Job'}
+              </button>
+            </div>
+          </form>
+
+          {/* PREVIEW */}
+          <aside className="lg:col-span-2 bg-slate-50 border-l border-slate-100 p-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Live Preview</p>
+            <JobPreviewCard form={form} />
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  return (
+    <div>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3 pb-2 border-b border-slate-100">{title}</h3>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+function Field({ label, children }) {
+  return (
+    <label className="block">
+      <span className="block text-sm font-medium text-slate-700 mb-1.5">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function JobPreviewCard({ form }) {
+  const salary = fmtSalary(form.salary_min, form.salary_max, form.salary_currency);
+  const tags = (form.tags || '').split(',').map((t) => t.trim()).filter(Boolean);
+  const skills = (form.requirements || '').split(',').map((t) => t.trim()).filter(Boolean).slice(0, 6);
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-start gap-3 mb-3">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-success-500 flex items-center justify-center text-white font-bold flex-shrink-0">
+          {(form.company_name || form.title || '?').slice(0, 1).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h4 className="font-semibold text-slate-900 truncate">{form.title || 'Job title'}</h4>
+          <p className="text-sm text-slate-600 truncate">{form.company_name || 'Company name'}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 mb-3">
+        {form.location && <span>📍 {form.location}</span>}
+        {form.job_type && <span>· {form.job_type}</span>}
+        {salary && <span>· 💰 {salary}</span>}
+      </div>
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {tags.map((t, i) => (
+            <span key={i} className="badge bg-amber-50 text-amber-700 border border-amber-100">{t}</span>
+          ))}
+        </div>
+      )}
+      <p className="text-sm text-slate-600 leading-relaxed line-clamp-3 mb-3">
+        {form.description || 'Description will appear here…'}
+      </p>
+      {skills.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {skills.map((s, i) => (
+            <span key={i} className="badge-neutral">{s}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

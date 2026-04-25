@@ -20,6 +20,8 @@ async function generateQuestions(jobTitle, resumeSummary, jdText) {
     const result = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
     });
     const responseText = result.choices[0].message.content;
     const parsed = parseJSON(responseText);
@@ -30,13 +32,15 @@ async function generateQuestions(jobTitle, resumeSummary, jdText) {
   }
 }
 
-async function evaluateAnswer(jobTitle, question, answer) {
+async function evaluateAnswer(jobTitle, questionObj, answer) {
   try {
-    const prompt = PROMPTS.answerEvaluation(jobTitle, question, answer);
+    const prompt = PROMPTS.answerEvaluation(jobTitle, questionObj, answer);
 
     const result = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
     });
     const responseText = result.choices[0].message.content;
     return parseJSON(responseText);
