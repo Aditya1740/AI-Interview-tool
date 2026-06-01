@@ -5,6 +5,10 @@ const { runMigrations } = require('./migrations');
 
 const DB_PATH = path.join(__dirname, 'interview_platform.db');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
+const LOCK_PATH = DB_PATH + '.lock';
+
+// Remove stale lock left by a previously crashed process
+try { fs.rmdirSync(LOCK_PATH); } catch (_) {}
 
 const db = new Database(DB_PATH);
 
