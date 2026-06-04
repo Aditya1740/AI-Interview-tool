@@ -56,12 +56,21 @@ cd AI-Interview-tool
 npm run install:all
 
 # 3. Configure env
+#
+#   Mac / Linux / Git Bash:
 cp .env.example .env
+#
+#   Windows Command Prompt:
+#   copy .env.example .env
+#
 # Fill in the three values in .env:
 #
 #   GROQ_API_KEY  → free key from https://console.groq.com/keys
-#   JWT_SECRET    → any long random string; generate one with:
-#                   openssl rand -base64 32
+#
+#   JWT_SECRET    → any long random string. Generate one with:
+#                   Mac/Linux/Git Bash:  openssl rand -base64 32
+#                   Windows CMD:         node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+#
 #   PORT          → leave as 5000 (only change if 5000 is already in use)
 
 # 4. Seed the database (creates demo users + 6 demo jobs)
