@@ -49,8 +49,8 @@ That's it. No Python, no Docker, no managed DB — SQLite ships in-process.
 
 ```bash
 # 1. Clone
-git clone https://github.com/<your-username>/<this-repo>.git
-cd <this-repo>
+git clone https://github.com/Aditya1740/AI-Interview-tool.git
+cd AI-Interview-tool
 
 # 2. Install everything (root + client)
 npm run install:all
