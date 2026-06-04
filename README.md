@@ -57,8 +57,12 @@ npm run install:all
 
 # 3. Configure env
 cp .env.example .env
-# Open .env and paste your real Groq key into GROQ_API_KEY.
-# Set JWT_SECRET to any long random string.
+# Fill in the three values in .env:
+#
+#   GROQ_API_KEY  → free key from https://console.groq.com/keys
+#   JWT_SECRET    → any long random string; generate one with:
+#                   openssl rand -base64 32
+#   PORT          → leave as 5000 (only change if 5000 is already in use)
 
 # 4. Seed the database (creates demo users + 6 demo jobs)
 npm run seed
