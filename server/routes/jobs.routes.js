@@ -12,6 +12,7 @@ const EDITABLE_FIELDS = [
   'experience_min', 'experience_max',
   'num_openings', 'application_deadline',
   'tags', 'is_active',
+  'interview_config',
 ];
 
 // GET /api/jobs - list/search jobs (public)

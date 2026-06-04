@@ -12,7 +12,8 @@ router.post('/start/:applicationId', authenticate, requireRole('candidate'), asy
 
     const application = db
       .prepare(
-        `SELECT a.*, j.title as job_title, j.description as job_description, j.requirements as job_requirements
+        `SELECT a.*, j.title as job_title, j.description as job_description,
+                j.requirements as job_requirements, j.interview_config
          FROM applications a
          JOIN jobs j ON a.job_id = j.id
          WHERE a.id = ?`
@@ -47,7 +48,11 @@ router.post('/start/:applicationId', authenticate, requireRole('candidate'), asy
       : 'No resume text available';
     const jdText = `${application.job_title}\n${application.job_description}\nRequirements: ${application.job_requirements}`;
 
-    const questions = await generateQuestions(application.job_title, resumeSummary, jdText);
+    const interviewConfig  = application.interview_config ? JSON.parse(application.interview_config) : {};
+    const customQuestions  = interviewConfig.custom_questions || [];
+    const aiCount          = Math.max(0, 15 - customQuestions.length);
+
+    const questions = await generateQuestions(application.job_title, resumeSummary, jdText, customQuestions, aiCount);
 
     if (existingInterview) {
       // Update existing pending interview

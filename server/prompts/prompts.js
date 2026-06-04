@@ -44,7 +44,10 @@ ${jdText}
   // ============================================================
   // STEP 2: GENERATE INTERVIEW QUESTIONS (10 Technical + 5 HR)
   // ============================================================
-  questionGeneration: (jobTitle, resumeSummary, jdText) => `You are a senior technical interviewer preparing a rigorous interview for the role of ${jobTitle}. Generate EXACTLY 15 questions: 10 Technical + 5 HR/Behavioral. Be specific to THIS candidate and THIS JD — no generic boilerplate.
+  questionGeneration: (jobTitle, resumeSummary, jdText, aiCount = 15) => {
+    const techCount = Math.round(aiCount * 10 / 15);
+    const hrCount   = aiCount - techCount;
+    return `You are a senior technical interviewer preparing a rigorous interview for the role of ${jobTitle}. Generate EXACTLY ${aiCount} questions: ${techCount} Technical + ${hrCount} HR/Behavioral. Be specific to THIS candidate and THIS JD — no generic boilerplate.
 
 === CANDIDATE RESUME SUMMARY ===
 ${resumeSummary}
@@ -53,8 +56,8 @@ ${resumeSummary}
 ${jdText}
 
 === HARD RULES ===
-- Exactly 10 Technical, then exactly 5 HR (in that order).
-- Technical questions must scale in difficulty — Q1 easiest, Q10 hardest. Cover concepts, problem-solving, scenarios, system design / architecture (when JD warrants).
+- Exactly ${techCount} Technical, then exactly ${hrCount} HR (in that order).
+- Technical questions must scale in difficulty — Q1 easiest, Q${techCount} hardest. Cover concepts, problem-solving, scenarios, system design / architecture (when JD warrants).
 - At least ONE technical question references a specific project/tech from the resume by name.
 - At least ONE technical question targets a clear weakness or gap vs the JD.
 - At least ONE technical question is a realistic scenario ("Your service is down at 2am and...", "You're given X data and Y constraint, design...").
@@ -73,9 +76,10 @@ ${jdText}
       "difficulty": "easy" | "medium" | "hard",
       "targets": "<short note: what this question is probing>"
     }
-    // ... 14 more, in order: 10 Technical first (easy → hard), then 5 HR
+    // ... ${aiCount - 1} more, in order: ${techCount} Technical first (easy → hard), then ${hrCount} HR
   ]
-}`,
+}`;
+  },
 
   // ============================================================
   // STEP 3: PER-ANSWER EVALUATION (during interview)

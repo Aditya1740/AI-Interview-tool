@@ -18,6 +18,7 @@ const ADDITIONS = [
   ['jobs', 'num_openings',         'INTEGER DEFAULT 1'],
   ['jobs', 'application_deadline', 'DATE'],
   ['jobs', 'tags',                 'TEXT'],          // comma-separated: Urgent, Hot, Remote, etc.
+  ['jobs', 'interview_config',     'TEXT'],          // JSON: { custom_questions: [...] }
 ];
 
 function runMigrations(db) {

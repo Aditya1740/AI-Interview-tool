@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { startInterview, getInterview, submitAnswer } from '../api/interview.api';
@@ -16,6 +16,17 @@ const categoryStyle = (cat = '') => {
   return 'bg-slate-100 text-slate-700 border-slate-200';
 };
 
+function MicIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" strokeLinecap="round" />
+      <line x1="8" y1="23" x2="16" y2="23" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function InterviewPage() {
   const { applicationId } = useParams();
   const [interview, setInterview] = useState(null);
@@ -26,6 +37,10 @@ export default function InterviewPage() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [error, setError] = useState('');
   const [lastFeedback, setLastFeedback] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [interimText, setInterimText] = useState('');
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const recognitionRef = useRef(null);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -33,6 +48,82 @@ export default function InterviewPage() {
     if (!user || user.role !== 'candidate') { navigate('/'); return; }
     initInterview();
   }, [applicationId]);
+
+  // Set up Web Speech API once on mount
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      let finalText = '';
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalText += transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+      if (finalText) {
+        setCurrentAnswer((prev) => {
+          const separator = prev && !prev.endsWith(' ') ? ' ' : '';
+          return prev + separator + finalText.trim();
+        });
+      }
+      setInterimText(interim);
+    };
+
+    recognition.onerror = (event) => {
+      setIsRecording(false);
+      setInterimText('');
+      if (event.error === 'not-allowed') {
+        setError('Microphone access denied. Click the mic icon in your browser address bar and allow access.');
+      } else if (event.error === 'audio-capture') {
+        setError('Could not access your microphone. On Mac: go to System Settings → Sound → Input and select "MacBook Microphone", then try again.');
+      } else if (event.error === 'network') {
+        setError('Speech recognition requires an internet connection.');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      setInterimText('');
+    };
+
+    recognitionRef.current = recognition;
+    setSpeechSupported(true);
+
+    return () => { recognition.abort(); };
+  }, []);
+
+  const toggleRecording = async () => {
+    if (!recognitionRef.current) return;
+    if (isRecording) {
+      recognitionRef.current.stop();
+      return;
+    }
+
+    // Pre-check mic access via getUserMedia so the browser shows its own
+    // device picker instead of the macOS Continuity Camera popup.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+    } catch (err) {
+      setError('Could not access your microphone. On Mac: go to System Settings → Sound → Input and select "MacBook Microphone", then try again.');
+      return;
+    }
+
+    setError('');
+    setInterimText('');
+    setIsRecording(true);
+    recognitionRef.current.start();
+  };
 
   const initInterview = async () => {
     try {
@@ -52,8 +143,6 @@ export default function InterviewPage() {
       setInterview(interviewData);
       const answers = interviewData.answers || [];
       const total = interviewData.questions?.length || 0;
-      // Use the count of real answers as the next index. This is robust to
-      // empty arrays, sparse arrays with nulls, and fully-answered arrays.
       const answered = answers.filter((a) => a !== undefined && a !== null).length;
       setCurrentIndex(Math.min(answered, Math.max(total - 1, 0)));
     } catch (err) {
@@ -64,6 +153,13 @@ export default function InterviewPage() {
   };
 
   const handleSubmitAnswer = async () => {
+    // Stop any active recording before submitting
+    if (isRecording) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      setInterimText('');
+    }
+
     if (!currentAnswer.trim()) { setError('Please write an answer before submitting'); return; }
     if (currentAnswer.trim().length < 20) { setError('Please provide a more detailed answer (at least 20 characters)'); return; }
     setError(''); setSubmitting(true);
@@ -81,6 +177,8 @@ export default function InterviewPage() {
         setTimeout(() => {
           setLastFeedback(null);
           setCurrentIndex(nextIdx);
+          setIsRecording(false);
+          setInterimText('');
         }, 3000);
       }
     } catch (err) {
@@ -107,7 +205,7 @@ export default function InterviewPage() {
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-slate-800 text-lg font-semibold">Preparing your interview...</p>
-          <p className="text-slate-500 text-sm mt-1">AI is generating 15 personalized questions</p>
+          <p className="text-slate-500 text-sm mt-1">AI is generating personalized questions</p>
         </div>
       </div>
     );
@@ -218,15 +316,53 @@ export default function InterviewPage() {
             </h2>
 
             <div className="mb-4">
-              <label className="block text-slate-700 text-sm font-medium mb-2">Your Answer</label>
+              {/* Label row with mic button */}
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-700 text-sm font-medium">Your Answer</span>
+                {speechSupported && (
+                  <button
+                    type="button"
+                    onClick={toggleRecording}
+                    disabled={submitting}
+                    className={`flex items-center gap-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                      isRecording
+                        ? 'text-rose-600 hover:text-rose-700'
+                        : 'text-slate-500 hover:text-brand-600'
+                    }`}
+                  >
+                    {isRecording ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                        Recording… click to stop
+                      </>
+                    ) : (
+                      <>
+                        <MicIcon />
+                        Speak your answer
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+
               <textarea
                 value={currentAnswer}
                 onChange={(e) => setCurrentAnswer(e.target.value)}
                 placeholder="Be specific. Use examples, numbers, and concrete outcomes..."
                 rows={8}
                 disabled={submitting}
-                className="input-field resize-none"
+                className={`input-field resize-none transition-colors ${
+                  isRecording ? 'border-rose-300 ring-1 ring-rose-200' : ''
+                }`}
               />
+
+              {/* Live interim transcript */}
+              {interimText && (
+                <p className="text-slate-400 text-sm italic mt-1 leading-relaxed">
+                  {interimText}<span className="animate-pulse">…</span>
+                </p>
+              )}
+
               <div className="text-right text-slate-400 text-xs mt-1">{currentAnswer.length} characters</div>
             </div>
 

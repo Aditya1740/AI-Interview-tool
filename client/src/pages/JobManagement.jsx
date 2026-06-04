@@ -5,6 +5,10 @@ import { getJobs, createJob, updateJob, deleteJob } from '../api/jobs.api';
 import Navbar from '../components/Navbar';
 
 const JOB_TYPES = ['Full-time', 'Part-time', 'Internship', 'Contract', 'Remote'];
+const CATEGORIES = ['Technical', 'HR'];
+const DIFFICULTIES = ['easy', 'medium', 'hard'];
+
+const emptyQuestion = () => ({ question: '', category: 'Technical', difficulty: 'medium', ideal_points: [] });
 
 const emptyForm = {
   title: '', description: '', requirements: '',
@@ -14,6 +18,7 @@ const emptyForm = {
   experience_min: '', experience_max: '',
   num_openings: 1, application_deadline: '',
   tags: '',
+  custom_questions: [],
 };
 
 function fmtSalary(min, max, ccy = 'INR') {
@@ -57,6 +62,10 @@ export default function JobManagement() {
 
   const openEdit = (job) => {
     setEditJob(job);
+    let customQuestions = [];
+    if (job.interview_config) {
+      try { customQuestions = JSON.parse(job.interview_config).custom_questions || []; } catch {}
+    }
     setForm({
       title: job.title || '',
       description: job.description || '',
@@ -74,6 +83,7 @@ export default function JobManagement() {
       num_openings: job.num_openings ?? 1,
       application_deadline: job.application_deadline || '',
       tags: job.tags || '',
+      custom_questions: customQuestions,
     });
     setShowForm(true); setError('');
   };
@@ -81,13 +91,15 @@ export default function JobManagement() {
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setSubmitting(true);
     try {
+      const { custom_questions, ...rest } = form;
       const payload = {
-        ...form,
+        ...rest,
         salary_min: form.salary_min === '' ? null : Number(form.salary_min),
         salary_max: form.salary_max === '' ? null : Number(form.salary_max),
         experience_min: form.experience_min === '' ? null : Number(form.experience_min),
         experience_max: form.experience_max === '' ? null : Number(form.experience_max),
         num_openings: Number(form.num_openings) || 1,
+        interview_config: JSON.stringify({ custom_questions: custom_questions || [] }),
       };
       if (editJob) await updateJob(editJob.id, payload);
       else await createJob(payload);
@@ -106,6 +118,43 @@ export default function JobManagement() {
   };
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
+
+  // Custom question helpers
+  const addQuestion = () =>
+    setForm((f) => ({ ...f, custom_questions: [...f.custom_questions, emptyQuestion()] }));
+
+  const removeQuestion = (i) =>
+    setForm((f) => ({ ...f, custom_questions: f.custom_questions.filter((_, idx) => idx !== i) }));
+
+  const updateQuestion = (i, field, val) =>
+    setForm((f) => {
+      const qs = [...f.custom_questions];
+      qs[i] = { ...qs[i], [field]: val };
+      return { ...f, custom_questions: qs };
+    });
+
+  const addPoint = (i) =>
+    setForm((f) => {
+      const qs = [...f.custom_questions];
+      qs[i] = { ...qs[i], ideal_points: [...(qs[i].ideal_points || []), ''] };
+      return { ...f, custom_questions: qs };
+    });
+
+  const removePoint = (i, pi) =>
+    setForm((f) => {
+      const qs = [...f.custom_questions];
+      qs[i] = { ...qs[i], ideal_points: qs[i].ideal_points.filter((_, idx) => idx !== pi) };
+      return { ...f, custom_questions: qs };
+    });
+
+  const updatePoint = (i, pi, val) =>
+    setForm((f) => {
+      const qs = [...f.custom_questions];
+      const pts = [...qs[i].ideal_points];
+      pts[pi] = val;
+      qs[i] = { ...qs[i], ideal_points: pts };
+      return { ...f, custom_questions: qs };
+    });
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -127,6 +176,12 @@ export default function JobManagement() {
           <JobFormModal
             form={form}
             update={update}
+            addQuestion={addQuestion}
+            removeQuestion={removeQuestion}
+            updateQuestion={updateQuestion}
+            addPoint={addPoint}
+            removePoint={removePoint}
+            updatePoint={updatePoint}
             onClose={() => setShowForm(false)}
             onSubmit={handleSubmit}
             submitting={submitting}
@@ -201,7 +256,10 @@ export default function JobManagement() {
 // -----------------------------------------------------------------------------
 // Modal: sectioned form + live preview
 // -----------------------------------------------------------------------------
-function JobFormModal({ form, update, onClose, onSubmit, submitting, editing, error }) {
+function JobFormModal({ form, update, addQuestion, removeQuestion, updateQuestion, addPoint, removePoint, updatePoint, onClose, onSubmit, submitting, editing, error }) {
+  const customCount = (form.custom_questions || []).length;
+  const aiCount = Math.max(0, 15 - customCount);
+
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto shadow-2xl">
@@ -290,6 +348,94 @@ function JobFormModal({ form, update, onClose, onSubmit, submitting, editing, er
               <Field label="Tags (comma-separated, optional)">
                 <input className="input-field" value={form.tags} onChange={(e) => update('tags', e.target.value)} placeholder="Urgent, Remote, Hot" />
               </Field>
+            </Section>
+
+            {/* INTERVIEW SETUP */}
+            <Section title="Interview Setup">
+              <p className="text-xs text-slate-500 -mt-1">
+                By default, AI generates 15 questions per candidate. Add custom questions here to replace AI slots — each custom question reduces AI questions by one.
+              </p>
+
+              <div className="space-y-4">
+                {(form.custom_questions || []).map((q, i) => (
+                  <div key={i} className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Custom Question {i + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeQuestion(i)}
+                        className="text-rose-500 hover:text-rose-700 text-sm font-medium"
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <Field label="Question *">
+                      <textarea
+                        className="input-field resize-none"
+                        rows={2}
+                        required
+                        value={q.question}
+                        onChange={(e) => updateQuestion(i, 'question', e.target.value)}
+                        placeholder="e.g. Walk me through a time you debugged a production issue under pressure."
+                      />
+                    </Field>
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <Field label="Category">
+                        <select className="input-field" value={q.category} onChange={(e) => updateQuestion(i, 'category', e.target.value)}>
+                          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Difficulty">
+                        <select className="input-field" value={q.difficulty} onChange={(e) => updateQuestion(i, 'difficulty', e.target.value)}>
+                          {DIFFICULTIES.map((d) => <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-medium text-slate-700">Ideal Answer Points <span className="text-slate-400 font-normal">(optional — used by AI for grading)</span></span>
+                        {(q.ideal_points || []).length < 5 && (
+                          <button type="button" onClick={() => addPoint(i)} className="text-brand-600 hover:text-brand-800 text-xs font-medium">+ Add point</button>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        {(q.ideal_points || []).map((pt, pi) => (
+                          <div key={pi} className="flex items-center gap-2">
+                            <input
+                              className="input-field flex-1 !py-1.5 text-sm"
+                              value={pt}
+                              onChange={(e) => updatePoint(i, pi, e.target.value)}
+                              placeholder={`Point ${pi + 1}`}
+                            />
+                            <button type="button" onClick={() => removePoint(i, pi)} className="text-slate-400 hover:text-rose-500 text-lg leading-none">×</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {customCount < 15 && (
+                <button
+                  type="button"
+                  onClick={addQuestion}
+                  className="w-full border-2 border-dashed border-slate-300 hover:border-brand-400 text-slate-500 hover:text-brand-600 rounded-xl py-2.5 text-sm font-medium transition-colors"
+                >
+                  + Add Custom Question
+                </button>
+              )}
+
+              <div className="text-xs text-slate-500 text-center pt-1">
+                {customCount === 0
+                  ? 'All 15 questions will be AI-generated for each candidate.'
+                  : customCount === 15
+                    ? '15 custom questions — AI generation will be skipped.'
+                    : `${customCount} custom + ${aiCount} AI = 15 total questions per candidate`}
+              </div>
             </Section>
 
             <div className="flex gap-3 pt-2 border-t border-slate-100">
