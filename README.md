@@ -71,7 +71,7 @@ cp .env.example .env
 #                   Mac/Linux/Git Bash:  openssl rand -base64 32
 #                   Windows CMD:         node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 #
-#   PORT          → leave as 5000 (only change if 5000 is already in use)
+#   PORT          → leave as 5002 (port 5000 is reserved by AirPlay on Mac)
 
 # 4. Seed the database (creates demo users + 6 demo jobs)
 npm run seed
@@ -196,7 +196,7 @@ The seed also creates 6 demo jobs across 3 companies (Lumen Pay, Trellis Media, 
 | Script               | What it does                                                   |
 |----------------------|----------------------------------------------------------------|
 | `npm run install:all` | Installs root + client dependencies                           |
-| `npm run dev`         | Starts backend (`:5000`) and frontend (`:3000`) concurrently  |
+| `npm run dev`         | Starts backend (`:5002`) and frontend (`:3000`) concurrently  |
 | `npm run server`      | Runs only the backend (with nodemon auto-reload)              |
 | `npm run client`      | Runs only the Vite dev server                                 |
 | `npm run seed`        | **Destructive** reset + reseed of demo accounts and jobs      |
